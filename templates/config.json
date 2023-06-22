@@ -1,0 +1,76 @@
+{
+   "http": {
+      "routers": {
+         {% for router in routers %}
+         "{{ router.name }}": {
+            "entryPoints": ["https"],
+            "rule": "{{ router.rule }}",
+            "middlewares": ["default-headers", "https-redirectscheme"],
+            "tls": {},
+            "service": "{{ router.name }}"
+         }{% if not loop.last %},{% endif %}
+         {% endfor %}
+
+      },
+      "services": {
+      {% for router in routers %}
+         "{{router.name}}": {
+            "loadBalancer": {
+               {% if router.healthcheck %}
+                "healthcheck": {
+                    "path": "{{ router.healthcheck_url }}",
+                    "interval": "10s",
+                    "timeout": "2s",
+                    "port": {{ router.healthcheck_port }}
+                },
+               {% endif %}
+               "servers": [
+                  {% for url in router.urls %}
+                  {"url": "{{ url }}"}{% if not loop.last %},{% endif %}
+                  {% endfor %}
+               ],
+               "passHostHeader": true
+            }
+         }{% if not loop.last %},{% endif %}
+      {% endfor %}
+      },
+      "middlewares": {
+         "https-redirectscheme": {
+            "redirectScheme": {
+               "scheme": "https",
+               "permanent": true
+            }
+         },
+         "default-headers": {
+            "headers": {
+               "frameDeny": true,
+               "browserXssFilter": true,
+               "contentTypeNosniff": true,
+               "forceSTSHeader": true,
+               "stsIncludeSubdomains": true,
+               "stsPreload": true,
+               "stsSeconds": 15552000,
+               "customFrameOptionsValue": "SAMEORIGIN",
+               "customRequestHeaders": {
+                  "X-Forwarded-Proto": "https"
+               }
+            }
+         },
+         "default-whitelist": {
+            "ipWhiteList": {
+               "sourceRange": [
+                  "0.0.0.0/0"
+               ]
+            }
+         },
+         "secured": {
+            "chain": {
+               "middlewares": [
+                  "default-whitelist",
+                  "default-headers"
+               ]
+            }
+         }
+      }
+   }
+}
