@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, status
 from pydantic import BaseModel
 from fastapi.templating import Jinja2Templates
 import pickle
@@ -75,12 +75,6 @@ except FileNotFoundError:
     db = DB()
     db.save()
 
-
-# db = DB()
-# db.add(Router(name='images', rule='Host(`images.cpd.ntnx.pro`)', urls=['http://10.38.12.45:80'], healthcheck=True))
-# db.add(Router(name='test2', rule='Host(`test2.example.com`)', urls=['http://2.2.2.2:8080', 'http://3.3.3.3:8080'],
-#               healthcheck=True))
-
 api = FastAPI(
     title="traefik http provider api",
     openapi_url="/openapi.json",
@@ -93,49 +87,56 @@ async def list_all_routers():
 
 
 @api.get('/routers/{name}')
-async def get_router_details_by_name(name: str):
+async def get_router_details_by_name(name: str, response: Response):
     if name in iter(db):
-        return db[name]
+        return db[name].dict()
     else:
-        return {'message': 'failed, record not found'}, 404
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {'message': 'failed, record not found'}
 
 
 @api.get('/routers/{name}/urls')
-async def get_router_urls(name: str):
+async def get_router_urls(name: str, response: Response):
     if name in iter(db):
         return db[name]['urls']
     else:
-        return {'message': 'failed, record not found'}, 404
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {'message': 'failed, record not found'}
 
 
 @api.put('/routers/{name}/urls')
-async def update_router_urls(name: str, urls: list[str]):
+async def update_router_urls(name: str, urls: list[str], response: Response):
     if name in iter(db):
         db[name].update_urls(urls)
         db.save()
         return {'message': 'success', 'data': db[name].dict()}
     else:
-        return {'message': 'failed, record not found'}, 404
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {'message': 'failed, record not found'}
 
 
 @api.delete('/routers/{name}/urls')
-async def delete_router_urls(name: str, urls: list[str]):
+async def delete_router_urls(name: str, urls: list[str], response: Response):
     if name in iter(db):
         db[name].delete_urls(urls)
+        if len(db[name]['urls']) == 0:
+            db.delete(name)
         db.save()
-        return {'message': 'success', 'data': db[name].dict()}
+        return {'message': 'success'}
     else:
-        return {'message': 'failed, record not found'}, 404
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {'message': 'failed, record not found'}
 
 
 @api.delete('/routers/{name}')
-async def delete_router(name: str):
+async def delete_router(name: str, response: Response):
     if name in iter(db):
         db.delete(name)
         db.save()
         return {'message': 'success'}
     else:
-        return {'message': 'failed, record not found'}, 404
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return {'message': 'failed, record not found'}
 
 
 @api.post('/routers')
@@ -145,7 +146,9 @@ async def create_router(router: Router):
         db.save()
         return {'message': 'success', 'data': router.dict()}
     else:
-        return {'message': 'failed, record already exists', 'data': router.dict()}, 400
+        db[router.name].update_urls(router.urls)
+        db.save()
+        return {'message': 'record already exists, updating urls', 'data': router.dict()}
 
 
 @api.get('/')
